@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tool-Calling AI Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  :root {
+    --bg: #060a11;
+    --bg-secondary: #0c1220;
+    --bg-tertiary: #111827;
+    --card: #0f172a;
+    --card-hover: #1a2744;
+    --border: #1e293b;
+    --border-active: #10b981;
+    --fg: #e2e8f0;
+    --fg-muted: #64748b;
+    --fg-dim: #475569;
+    --accent: #10b981;
+    --accent-glow: rgba(16, 185, 129, 0.15);
+    --accent2: #06b6d4;
+    --accent2-glow: rgba(6, 182, 212, 0.12);
+    --error: #ef4444;
+    --error-glow: rgba(239, 68, 68, 0.12);
+    --warning: #f59e0b;
+    --warning-glow: rgba(245, 158, 11, 0.12);
+    --success: #10b981;
+    --json-key: #06b6d4;
+    --json-string: #fbbf24;
+    --json-number: #f472b6;
+    --json-bool: #a78bfa;
+    --json-null: #64748b;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-lg: 14px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui: 'Space Grotesk', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { font-size: 14px; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: -40%; left: -20%;
+    width: 80%; height: 80%;
+    background: radial-gradient(ellipse, rgba(16,185,129,0.04) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    bottom: -30%; right: -10%;
+    width: 60%; height: 60%;
+    background: radial-gradient(ellipse, rgba(6,182,212,0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(6,10,17,0.85);
+    backdrop-filter: blur(16px);
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .header-logo {
+    width: 38px; height: 38px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: #000; font-weight: 700;
+    font-family: var(--font-mono);
+    box-shadow: 0 0 20px var(--accent-glow);
+  }
+  .header-title { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+  .header-title span { color: var(--accent); }
+  .header-subtitle { font-size: 0.75rem; color: var(--fg-muted); margin-top: 1px; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .header-btn {
+    padding: 7px 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--fg-muted); font-size: 0.78rem; font-family: var(--font-ui);
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .header-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  .main { display: grid; grid-template-columns: 1fr 1fr; gap: 0; overflow: hidden; }
+
+  .chat-panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 20px; border-bottom: 1px solid var(--border);
+    background: rgba(15,23,42,0.5); overflow-x: auto; scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .tool-chip {
+    flex-shrink: 0; padding: 5px 12px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+    color: var(--fg-muted); font-size: 0.72rem; font-family: var(--font-mono);
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .tool-chip i { font-size: 0.68rem; }
+  .tool-chip:hover, .tool-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .tool-chip .tool-status { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse-dot 2s infinite; }
+  @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .chat-messages::-webkit-scrollbar { width: 5px; }
+  .chat-messages::-webkit-scrollbar-track { background: transparent; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .msg { display: flex; gap: 10px; animation: msg-in 0.35s ease-out; max-width: 95%; }
+  @keyframes msg-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg-avatar {
+    width: 30px; height: 30px; border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; flex-shrink: 0; margin-top: 2px;
+  }
+  .msg.user .msg-avatar { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: #fff; }
+  .msg.agent .msg-avatar { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; }
+  .msg-content { display: flex; flex-direction: column; gap: 6px; }
+  .msg-bubble { padding: 10px 14px; border-radius: var(--radius); font-size: 0.88rem; line-height: 1.55; }
+  .msg.user .msg-bubble { background: linear-gradient(135deg, #1e3a5f, #1a2744); border: 1px solid rgba(59,130,246,0.2); }
+  .msg.agent .msg-bubble { background: var(--card); border: 1px solid var(--border); }
+  .msg-time { font-size: 0.65rem; color: var(--fg-dim); font-family: var(--font-mono); }
+  .msg.user .msg-time { text-align: right; }
+
+  .thinking-block {
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    background: rgba(16,185,129,0.05); border-left: 2px solid var(--accent);
+    font-size: 0.78rem; color: var(--fg-muted); font-family: var(--font-mono); line-height: 1.5;
+  }
+  .thinking-block .label { color: var(--accent); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+
+  .error-block {
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    background: var(--error-glow); border-left: 2px solid var(--error);
+    font-size: 0.78rem; color: #fca5a5; font-family: var(--font-mono); line-height: 1.5;
+  }
+  .error-block .label { color: var(--error); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+
+  .chat-input-area { padding: 16px 20px; border-top: 1px solid var(--border); background: rgba(15,23,42,0.5); }
+  .chat-input-wrap {
+    display: flex; align-items: flex-end; gap: 10px;
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px 6px 6px 14px; transition: border-color 0.2s;
+  }
+  .chat-input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .chat-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--fg); font-family: var(--font-ui); font-size: 0.88rem;
+    resize: none; max-height: 100px; min-height: 24px; line-height: 1.5; padding: 6px 0;
+  }
+  .chat-input::placeholder { color: var(--fg-dim); }
+  .send-btn {
+    width: 36px; height: 36px; border-radius: var(--radius-sm); border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #000; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; transition: all 0.2s; flex-shrink: 0;
+  }
+  .send-btn:hover { transform: scale(1.05); box-shadow: 0 0 16px var(--accent-glow); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .inspector-panel { display: flex; flex-direction: column; overflow: hidden; background: var(--bg-secondary); }
+  .inspector-tabs { display: flex; border-bottom: 1px solid var(--border); background: rgba(15,23,42,0.5); }
+  .inspector-tab {
+    padding: 10px 18px; font-size: 0.78rem; font-weight: 500;
+    color: var(--fg-muted); border: none; background: none; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: all 0.2s;
+    font-family: var(--font-ui); display: flex; align-items: center; gap: 6px;
+  }
+  .inspector-tab:hover { color: var(--fg); }
+  .inspector-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .inspector-tab .count { background: var(--border); padding: 1px 6px; border-radius: 10px; font-size: 0.65rem; font-family: var(--font-mono); }
+  .inspector-tab.active .count { background: var(--accent-glow); color: var(--accent); }
+
+  .inspector-content { flex: 1; overflow-y: auto; padding: 16px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .inspector-content::-webkit-scrollbar { width: 5px; }
+  .inspector-content::-webkit-scrollbar-track { background: transparent; }
+  .inspector-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .inspector-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--fg-dim); gap: 12px; }
+  .inspector-empty i { font-size: 2.5rem; opacity: 0.3; }
+  .inspector-empty p { font-size: 0.85rem; }
+
+  .json-entry { margin-bottom: 16px; animation: json-in 0.3s ease-out; }
+  @keyframes json-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  .json-entry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .json-entry-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px; }
+  .json-entry-label.request { color: var(--accent2); }
+  .json-entry-label.response { color: var(--accent); }
+  .json-entry-label.error { color: var(--error); }
+  .json-entry-label .badge { padding: 1px 7px; border-radius: 4px; font-size: 0.62rem; font-weight: 600; font-family: var(--font-mono); }
+  .json-entry-label.request .badge { background: var(--accent2-glow); color: var(--accent2); }
+  .json-entry-label.response .badge { background: var(--accent-glow); color: var(--accent); }
+  .json-entry-label.error .badge { background: var(--error-glow); color: var(--error); }
+  .json-entry-time { font-size: 0.62rem; color: var(--fg-dim); font-family: var(--font-mono); }
+  .json-block {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px; font-family: var(--font-mono); font-size: 0.75rem;
+    line-height: 1.7; overflow-x: auto; white-space: pre; position: relative;
+  }
+  .json-block.error-json { border-color: rgba(239,68,68,0.3); }
+  .json-copy-btn {
+    position: absolute; top: 6px; right: 6px; padding: 3px 8px;
+    border-radius: 4px; border: 1px solid var(--border); background: var(--card);
+    color: var(--fg-dim); font-size: 0.62rem; cursor: pointer;
+    font-family: var(--font-mono); transition: all 0.2s; opacity: 0;
+  }
+  .json-block:hover .json-copy-btn { opacity: 1; }
+  .json-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  .jk { color: var(--json-key); }
+  .js { color: var(--json-string); }
+  .jn { color: var(--json-number); }
+  .jb { color: var(--json-bool); }
+  .jnull { color: var(--json-null); }
+  .jp { color: var(--fg-dim); }
+
+  .tools-panel { display: none; }
+  .tools-panel.active { display: block; }
+  .tool-def-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; transition: border-color 0.2s; }
+  .tool-def-card:hover { border-color: var(--fg-dim); }
+  .tool-def-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .tool-def-icon { width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+  .tool-def-name { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600; color: var(--fg); }
+  .tool-def-desc { font-size: 0.78rem; color: var(--fg-muted); margin-bottom: 10px; line-height: 1.5; }
+  .tool-params-title { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-dim); margin-bottom: 6px; font-weight: 600; }
+  .tool-param { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 0.75rem; font-family: var(--font-mono); }
+  .tool-param .pname { color: var(--json-key); min-width: 100px; }
+  .tool-param .ptype { color: var(--json-bool); min-width: 60px; }
+  .tool-param .preq { padding: 1px 6px; border-radius: 3px; font-size: 0.6rem; font-weight: 600; }
+  .tool-param .preq.required { background: var(--error-glow); color: var(--error); }
+  .tool-param .preq.optional { background: rgba(100,116,139,0.15); color: var(--fg-muted); }
+
+  .toast-container { position: fixed; top: 70px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    padding: 10px 16px; border-radius: var(--radius-sm); font-size: 0.78rem;
+    font-family: var(--font-mono);
+    animation: toast-in 0.3s ease-out, toast-out 0.3s ease-in 2.7s forwards;
+    display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow);
+  }
+  .toast.success { background: #065f46; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+  .toast.error { background: #7f1d1d; color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+  .toast.info { background: #164e63; color: #67e8f9; border: 1px solid rgba(6,182,212,0.3); }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+
+  .typing-indicator { display: flex; gap: 4px; padding: 8px 0; }
+  .typing-indicator span { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: typing-bounce 1.2s infinite; }
+  .typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typing-bounce { 0%,60%,100% { transform: translateY(0); opacity: 0.3; } 30% { transform: translateY(-6px); opacity: 1; } }
+
+  .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 20px 4px; }
+  .suggestion-chip {
+    padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: none; color: var(--fg-muted); font-size: 0.72rem;
+    font-family: var(--font-ui); cursor: pointer; transition: all 0.2s;
+  }
+  .suggestion-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  .stats-bar { display: flex; gap: 16px; padding: 6px 20px; border-top: 1px solid var(--border); background: rgba(15,23,42,0.5); font-size: 0.65rem; font-family: var(--font-mono); color: var(--fg-dim); }
+  .stats-bar .stat-val { color: var(--fg-muted); }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .inspector-panel { display: none; }
+    .inspector-panel.mobile-show { display: flex; position: fixed; inset: 0; z-index: 100; background: var(--bg-secondary); }
+    .mobile-toggle { display: flex !important; }
+  }
+  .mobile-toggle { display: none !important; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="header">
+    <div class="header-left">
+      <div class="header-logo">T</div>
+      <div>
+        <div class="header-title">Tool<span>Agent</span></div>
+        <div class="header-subtitle">Function Calling + JSON + Error Handling</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="header-btn mobile-toggle" onclick="toggleMobileInspector()"><i class="fas fa-code"></i> Inspector</button>
+      <button class="header-btn" onclick="clearChat()"><i class="fas fa-trash-alt"></i> Clear</button>
+      <button class="header-btn" onclick="exportLog()"><i class="fas fa-download"></i> Export</button>
+    </div>
+  </header>
+  <div class="main">
+    <div class="chat-panel">
+      <div class="toolbar" id="toolbar"></div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="suggestions" id="suggestions"></div>
+      <div class="chat-input-area">
+        <div class="chat-input-wrap">
+          <textarea class="chat-input" id="chatInput" placeholder="Ask me to calculate, convert, check weather..." rows="1" onkeydown="handleInputKey(event)" oninput="autoResize(this)"></textarea>
+          <button class="send-btn" id="sendBtn" onclick="sendMessage()"><i class="fas fa-arrow-up"></i></button>
+        </div>
+      </div>
+      <div class="stats-bar">
+        <span>Messages: <span class="stat-val" id="statMsgs">0</span></span>
+        <span>Tool Calls: <span class="stat-val" id="statCalls">0</span></span>
+        <span>Errors: <span class="stat-val" id="statErrors">0</span></span>
+        <span>Latency: <span class="stat-val" id="statLatency">0ms</span></span>
+      </div>
+    </div>
+    <div class="inspector-panel" id="inspectorPanel">
+      <div class="inspector-tabs">
+        <button class="inspector-tab active" onclick="switchTab('json', this)"><i class="fas fa-exchange-alt"></i> JSON Log <span class="count" id="jsonCount">0</span></button>
+        <button class="inspector-tab" onclick="switchTab('tools', this)"><i class="fas fa-wrench"></i> Tool Definitions</button>
+        <button class="inspector-tab" onclick="switchTab('errors', this)"><i class="fas fa-exclamation-triangle"></i> Errors <span class="count" id="errCount">0</span></button>
+      </div>
+      <div class="inspector-content" id="tab-json">
+        <div class="inspector-empty" id="jsonEmpty"><i class="fas fa-code"></i><p>JSON function calls will appear here</p></div>
+        <div id="jsonLog"></div>
+      </div>
+      <div class="inspector-content tools-panel" id="tab-tools"></div>
+      <div class="inspector-content" id="tab-errors" style="display:none;">
+        <div class="inspector-empty" id="errorsEmpty"><i class="fas fa-check-circle"></i><p>No errors yet — try sending invalid input</p></div>
+        <div id="errorsLog"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const TOOLS = [
+  { name: 'calculator', description: 'Performs arithmetic operations: add, subtract, multiply, divide, power, modulo.', icon: 'fa-calculator', color: '#10b981', params: [
+    { name: 'operation', type: 'string', required: true, desc: 'add | subtract | multiply | divide | power | modulo' },
+    { name: 'a', type: 'number', required: true, desc: 'First operand' },
+    { name: 'b', type: 'number', required: true, desc: 'Second operand' }
+  ]},
+  { name: 'unit_converter', description: 'Converts between units of length, weight, temperature, speed, data, and time.', icon: 'fa-exchange-alt', color: '#06b6d4', params: [
+    { name: 'value', type: 'number', required: true, desc: 'Numeric value to convert' },
+    { name: 'from_unit', type: 'string', required: true, desc: 'Source unit' },
+    { name: 'to_unit', type: 'string', required: true, desc: 'Target unit' }
+  ]},
+  { name: 'get_weather', description: 'Returns simulated weather data for a given city.', icon: 'fa-cloud-sun', color: '#f59e0b', params: [
+    { name: 'city', type: 'string', required: true, desc: 'City name' },
+    { name: 'units', type: 'string', required: false, desc: 'metric or imperial' }
+  ]},
+  { name: 'string_utils', description: 'Performs string operations: uppercase, lowercase, reverse, word_count, char_count, slugify, base64_encode, base64_decode.', icon: 'fa-font', color: '#a78bfa', params: [
+    { name: 'operation', type: 'string', required: true, desc: 'The string operation' },
+    { name: 'input', type: 'string', required: true, desc: 'Input string' }
+  ]},
+  { name: 'get_datetime', description: 'Returns current date/time info with optional timezone and format.', icon: 'fa-clock', color: '#f472b6', params: [
+    { name: 'timezone', type: 'string', required: false, desc: 'IANA timezone' },
+    { name: 'format', type: 'string', required: false, desc: 'full | date | time | iso | unix' }
+  ]},
+  { name: 'random_generator', description: 'Generates random numbers, passwords, UUIDs, or picks from a list.', icon: 'fa-dice', color: '#fb923c', params: [
+    { name: 'type', type: 'string', required: true, desc: 'number | password | uuid | pick' },
+    { name: 'min', type: 'number', required: false, desc: 'Min value' },
+    { name: 'max', type: 'number', required: false, desc: 'Max value' },
+    { name: 'length', type: 'number', required: false, desc: 'Password length' },
+    { name: 'items', type: 'array', required: false, desc: 'Items for pick' }
+  ]},
+  { name: 'json_parser', description: 'Parses, validates, or formats a JSON string.', icon: 'fa-code', color: '#38bdf8', params: [
+    { name: 'action', type: 'string', required: true, desc: 'parse | validate | format | minify' },
+    { name: 'input', type: 'string', required: true, desc: 'JSON string' }
+  ]},
+  { name: 'math_advanced', description: 'Advanced math: factorial, fibonacci, sqrt, log, sin, cos, tan, gcd, lcm, is_prime.', icon: 'fa-square-root-alt', color: '#34d399', params: [
+    { name: 'function', type: 'string', required: true, desc: 'Math function' },
+    { name: 'value', type: 'number', required: true, desc: 'Input value' }
+  ]}
+];
+
+let jsonLogEntries = [], errorLogEntries = [];
+let stats = { msgs: 0, calls: 0, errors: 0, lastLatency: 0 };
+let activeTools = new Set(TOOLS.map(t => t.name));
+
+function init() {
+  renderToolbar(); renderToolDefinitions(); renderSuggestions(); showWelcome();
+  document.getElementById('chatInput').focus();
+}
+
+function renderToolbar() {
+  document.getElementById('toolbar').innerHTML = TOOLS.map(t =>
+    `<div class="tool-chip active" data-tool="${t.name}" onclick="toggleTool('${t.name}',this)"><span class="tool-status"></span><i class="fas ${t.icon}"></i> ${t.name}</div>`
+  ).join('');
+}
+function toggleTool(n, el) { if(activeTools.has(n)){activeTools.delete(n);el.classList.remove('active')}else{activeTools.add(n);el.classList.add('active')} }
+
+function renderToolDefinitions() {
+  document.getElementById('tab-tools').innerHTML = TOOLS.map(t => `
+    <div class="tool-def-card"><div class="tool-def-header"><div class="tool-def-icon" style="background:${t.color}22;color:${t.color};"><i class="fas ${t.icon}"></i></div><div class="tool-def-name">${t.name}</div></div>
+    <div class="tool-def-desc">${t.description}</div><div class="tool-params-title">Parameters</div>
+    ${t.params.map(p=>`<div class="tool-param"><span class="pname">${p.name}</span><span class="ptype">${p.type}</span><span class="preq ${p.required?'required':'optional'}">${p.required?'required':'optional'}</span></div>`).join('')}</div>`).join('');
+}
+
+function renderSuggestions() {
+  ['Calculate 247 * 38 + 129','Convert 100 km to miles','Weather in Tokyo','Reverse the string "hello world"','What time is it?','Generate a secure password','Is 97 a prime number?','Parse this JSON: {"a":1}'].forEach(text => {
+    const btn = document.createElement('button');
+    btn.className = 'suggestion-chip'; btn.textContent = text;
+    btn.addEventListener('click', () => { document.getElementById('chatInput').value = text; sendMessage(); });
+    document.getElementById('suggestions').appendChild(btn);
+  });
+}
+
+function showWelcome() {
+  document.getElementById('chatMessages').innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:40px 20px;text-align:center;">
+      <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#000;font-weight:800;font-family:var(--font-mono);box-shadow:0 0 30px var(--accent-glow);">T</div>
+      <div style="font-size:1.15rem;font-weight:600;">Tool-Calling AI Agent</div>
+      <div style="color:var(--fg-muted);font-size:0.82rem;max-width:380px;line-height:1.6;">I have ${TOOLS.length} tools available. Ask me to calculate, convert units, check weather, manipulate strings, generate random data, parse JSON, or do advanced math.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px;">
+        ${TOOLS.map(t=>`<span style="padding:3px 10px;border-radius:20px;border:1px solid var(--border);font-size:0.68rem;font-family:var(--font-mono);color:var(--fg-dim);"><i class="fas ${t.icon}" style="color:${t.color};margin-right:4px;"></i>${t.name}</span>`).join('')}
+      </div>
+    </div>`;
+}
+
+function handleInputKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()} }
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = ''; input.style.height = 'auto';
+  document.getElementById('suggestions').style.display = 'none';
+  document.getElementById('sendBtn').disabled = true;
+  const msgs = document.getElementById('chatMessages');
+  if (msgs.querySelector('[style*="align-items:center"]')) msgs.innerHTML = '';
+  addMessage('user', text);
+  stats.msgs++; updateStats();
+  const start = performance.now();
+  await agentProcess(text);
+  stats.lastLatency = Math.round(performance.now() - start);
+  updateStats();
+  document.getElementById('sendBtn').disabled = false;
+  input.focus();
+}
+
+function addMessage(role, content, extras = []) {
+  const msgs = document.getElementById('chatMessages');
+  const time = new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const avatar = role==='user'?'<i class="fas fa-user"></i>':'<i class="fas fa-robot"></i>';
+  let extrasHtml = extras.map(e => {
+    if(e.type==='thinking') return `<div class="thinking-block"><div class="label"><i class="fas fa-brain"></i> Reasoning</div>${escapeHtml(e.text)}</div>`;
+    if(e.type==='error') return `<div class="error-block"><div class="label"><i class="fas fa-exclamation-circle"></i> Error</div>${escapeHtml(e.text)}</div>`;
+    return '';
+  }).join('');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `<div class="msg-avatar">${avatar}</div><div class="msg-content">${extrasHtml}<div class="msg-bubble">${escapeHtml(content)}</div><div class="msg-time">${time}</div></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className='msg agent'; div.id='typingMsg';
+  div.innerHTML='<div class="msg-avatar"><i class="fas fa-robot"></i></div><div class="msg-content"><div class="msg-bubble"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>';
+  msgs.appendChild(div); msgs.scrollTop=msgs.scrollHeight;
+}
+function removeTyping() { const el=document.getElementById('typingMsg'); if(el)el.remove(); }
+
+async function agentProcess(userText) {
+  showTyping();
+  await delay(400+Math.random()*400);
+  removeTyping();
+
+  const intent = recognizeIntent(userText);
+  if (!intent) {
+    addMessage('agent', "I'm not sure which tool to use for that. Try asking me to calculate something, convert units, check weather, manipulate strings, generate random data, parse JSON, or do advanced math.",
+      [{ type:'error', text:`No matching tool found for input: "${userText.slice(0,60)}${userText.length>60?'...':''}"` }]);
+    logError('NO_TOOL_FOUND',{input:userText,available_tools:[...activeTools]},'No tool matched');
+    stats.errors++; updateStats(); return;
+  }
+
+  if (!activeTools.has(intent.tool)) {
+    addMessage('agent',`The "${intent.tool}" tool is currently disabled. Enable it from the toolbar.`,
+      [{type:'error',text:`Tool "${intent.tool}" is disabled.`}]);
+    logError('TOOL_DISABLED',{tool:intent.tool},'Tool not active');
+    stats.errors++; updateStats(); return;
+  }
+
+  const functionCall = { id:`call_${generateId()}`, type:'function_call', function:{ name:intent.tool, arguments:intent.args } };
+  const validation = validateArguments(intent.tool, intent.args);
+
+  if (!validation.valid) {
+    logJson('request', functionCall);
+    const errorResp = { id:functionCall.id, type:'error', error:{code:'INVALID_ARGUMENTS',message:validation.message,details:validation.errors} };
+    logJson('error', errorResp);
+    addMessage('agent',`Arguments invalid for "${intent.tool}": ${validation.message}`,
+      [{type:'thinking',text:`Intent: ${intent.tool}\nArgs: ${JSON.stringify(intent.args)}\nValidation failed.`},
+       {type:'error',text:`${validation.message}\n${validation.errors.map(e=>'• '+e).join('\n')}`}]);
+    logError('INVALID_ARGUMENTS',{tool:intent.tool,args:intent.args,errors:validation.errors},validation.message);
+    stats.calls++; stats.errors++; updateStats(); return;
+  }
+
+  logJson('request', functionCall);
+  stats.calls++;
+  const execResult = executeTool(intent.tool, intent.args);
+  const responseJson = {
+    id:functionCall.id, type:'function_response',
+    function:{ name:intent.tool, result:execResult.success?execResult.data:null },
+    ...(execResult.success?{}:{error:{code:execResult.errorCode||'EXECUTION_ERROR',message:execResult.error||'Unknown error'}}),
+    metadata:{execution_time_ms:execResult.time,timestamp:new Date().toISOString()}
+  };
+
+  await delay(200+Math.random()*300);
+  if (execResult.success) {
+    logJson('response', responseJson);
+    addMessage('agent', formatReply(intent.tool, intent.args, execResult.data),
+      [{type:'thinking',text:`Intent: ${intent.tool}\nArgs: ${JSON.stringify(intent.args)}\nCalling tool...`}]);
+    showToast('Tool executed successfully','success');
+  } else {
+    logJson('error', responseJson);
+    addMessage('agent',`"${intent.tool}" error: ${execResult.error}`,
+      [{type:'thinking',text:`Intent: ${intent.tool}\nArgs: ${JSON.stringify(intent.args)}\nCalling tool...`},
+       {type:'error',text:`${execResult.errorCode}: ${execResult.error}`}]);
+    logError(execResult.errorCode||'EXECUTION_ERROR',{tool:intent.tool,args:intent.args},execResult.error);
+    stats.errors++; showToast('Tool execution failed','error');
+  }
+  updateStats();
+}
+
+// ============================================
+// Intent Recognition — ALL PATTERNS FIXED
+// ============================================
+function recognizeIntent(text) {
+  const t = text.toLowerCase().trim();
+
+  // --- Calculator ---
+  const calcMatch = t.match(/(?:calculate|compute|what(?:'s| is)|eval|solve)\s+(.+)/) ||
+    t.match(/^([\d\s\+\-\*\/\.\(\)\^%]+)$/);
+  if (calcMatch || /(?:\d+\s*[\+\-\*\/\^%]\s*\d+)/.test(t)) {
+    const expr = calcMatch ? calcMatch[1].replace(/^(calculate|compute|what(?:'s| is)|eval|solve)\s+/i,'') : t;
+    const parsed = parseCalcExpression(expr);
+    if (parsed) return { tool:'calculator', args:parsed };
+  }
+
+  // --- Unit converter ---
+  const convMatch = t.match(/(?:convert|change|transform)\s+([\d.]+)\s*(\w+)\s*(?:to|into|in)\s*(\w+)/i);
+  if (convMatch) return { tool:'unit_converter', args:{value:parseFloat(convMatch[1]),from_unit:convMatch[2].toLowerCase(),to_unit:convMatch[3].toLowerCase()} };
+  const convMatch2 = t.match(/([\d.]+)\s*(\w+)\s*(?:in|to)\s*(\w+)/i);
+  if (convMatch2 && /km|mi|miles?|kg|lb|pounds?|celsius|fahrenheit|kelvin|mph|kph|kmh|mb|gb|kb|seconds?|minutes?|hours?|days?|meters?|feet|inches?|cm|mm|yards?/i.test(convMatch2[2]))
+    return { tool:'unit_converter', args:{value:parseFloat(convMatch2[1]),from_unit:convMatch2[2].toLowerCase(),to_unit:convMatch2[3].toLowerCase()} };
+
+  // --- Weather ---
+  const weatherMatch = t.match(/(?:weather|temperature|forecast|climate)\s*(?:in|at|for|of)?\s*(.+)/i);
+  if (weatherMatch) { const city=weatherMatch[1].replace(/[?.!]+$/,'').trim(); if(city) return {tool:'get_weather',args:{city}}; }
+
+  // --- String utils (specific patterns first, then generic) ---
+  const revMatch = t.match(/^reverse\s+(.+)/i);
+  if (revMatch) return {tool:'string_utils',args:{operation:'reverse',input:revMatch[1].trim()}};
+  const caseMatch = t.match(/^(uppercase|lowercase)\s+(.+)/i);
+  if (caseMatch) return {tool:'string_utils',args:{operation:caseMatch[1].toLowerCase(),input:caseMatch[2].trim()}};
+  const wcMatch = t.match(/count\s+(words?|characters?|chars?)\s+(?:in\s+)?['"\u201c]?(.+?)['"\u201d]?$/i);
+  if (wcMatch) { const op=wcMatch[1].startsWith('char')?'char_count':'word_count'; return {tool:'string_utils',args:{operation:op,input:wcMatch[2].replace(/^['"\u201c]+|['"\u201d]+$/g,'').trim()}}; }
+  for (const op of ['uppercase','lowercase','reverse','word_count','char_count','slugify','base64_encode','base64_decode']) {
+    const re = new RegExp(op.replace('_','[_ ]')+'\\s+(?:the\\s+(?:string|text|word)\\s+)?[\'"\\u201c]?(.+?)[\'"\\u201d]?$','i');
+    const m = t.match(re);
+    if (m) { const input=m[1].replace(/^['"\u201c]+|['"\u201d]+$/g,'').trim(); if(input) return {tool:'string_utils',args:{operation:op,input}}; }
+  }
+
+  // --- Datetime ---
+  // FIX: Match ALL common phrasings regardless of word order
+  const isTime = /\btime\b/.test(t) && !/count\s+time/i.test(t);
+  const isDate = /\b(date|today)\b/.test(t) && !/count\s+date/i.test(t);
+  const isDay = /\bday\b/.test(t) && /\bwhat\b/.test(t);
+
+  if (isTime || isDate || isDay ||
+      /^(?:tell|show|get|give)\s+(?:me\s+)?(?:the\s+)?(?:current\s+)?(?:time|date|datetime)/i.test(t) ||
+      /^(?:current|now)\s*(?:time|date|datetime)/i.test(t) ||
+      /^time\s*(?:now|please)?$/i.test(t) ||
+      /^date\s*(?:now|please)?$/i.test(t) ||
+      /^what(?:'s| is)\s+(?:the\s+)?(?:current\s+)?(?:time|date|datetime|day)/i.test(t)) {
+
+    let format = 'full';
+    // If they specifically asked for only time or only date, narrow it
+    if ((isTime && !isDate && !isDay) || /^time\b/i.test(t)) format = 'time';
+    else if ((isDate && !isTime && !isDay) || /^date\b/i.test(t)) format = 'date';
+
+    return { tool:'get_datetime', args:{ format } };
+  }
+
+  // --- Random generator ---
+  if (/^(?:random|generate)\b/i.test(t)) {
+    const typeMatch = t.match(/\b(number|password|uuid|pin)\b/i);
+    if (typeMatch) {
+      let type = typeMatch[1].toLowerCase();
+      if (type==='pin') type='password';
+      const args = { type };
+      const rangeMatch = t.match(/between\s+(\d+)\s+and\s+(\d+)/i);
+      if (rangeMatch && type==='number') { args.min=parseInt(rangeMatch[1]); args.max=parseInt(rangeMatch[2]); }
+      const lenMatch = t.match(/(\d+)\s*(?:characters?|chars?|digits?|long)/i);
+      if (lenMatch && type==='password') { args.length=parseInt(lenMatch[1]); }
+      return { tool:'random_generator', args };
+    }
+  }
+  if (/pick\s+(?:a\s+)?random/i.test(t) || /choose\s+(?:from|between)/i.test(t)) {
+    const itemsMatch = t.match(/(?:from|between)\s+(.+)/i);
+    if (itemsMatch) {
+      const items = itemsMatch[1].split(/(?:,|\s+or\s+)/i).map(s=>s.trim()).filter(Boolean);
+      if (items.length>=2) return {tool:'random_generator',args:{type:'pick',items}};
+    }
+  }
+
+  // --- JSON parser ---
+  const jsonMatch = t.match(/(?:parse|validate|format|minify|pretty-?print)\s+(?:this\s+)?(?:json[:\s]+)?(.+)/is);
+  if (jsonMatch) {
+    let action='parse';
+    if(/valid/i.test(t)) action='validate';
+    else if(/minif/i.test(t)) action='minify';
+    else if(/format|pretty/i.test(t)) action='format';
+    const input=jsonMatch[1].trim();
+    if(input) return {tool:'json_parser',args:{action,input}};
+  }
+
+  // --- Advanced math ---
+  // is_prime: handle "Is 97 a prime number?", "is 53 prime", etc.
+  if (/\bprime\b/i.test(t) && /\bis\b/i.test(t)) {
+    const numMatch = t.match(/(\d+)\s*(?:a\s+)?prime/i) || t.match(/is\s+(\d+)\b/i);
+    if (numMatch) {
+      const val = parseFloat(numMatch[1]);
+      if (!isNaN(val)) return {tool:'math_advanced',args:{function:'is_prime',value:val}};
+    }
+  }
+
+  const advMatch = t.match(/(?:what(?:'s| is)\s+)?(?:factorial|fibonacci|sqrt|square root|log|logarithm|sin|cos|tan|gcd|lcm)\s*(?:of\s+)?(.+)/i);
+  if (advMatch) {
+    const full = t.toLowerCase();
+    let fn, val;
+    if(/factorial/i.test(full)){fn='factorial';val=full.match(/factorial\s*(?:of\s+)?(\d+)/i)?.[1];}
+    else if(/fibonacci/i.test(full)){fn='fibonacci';val=full.match(/fibonacci\s*(?:of\s+)?(\d+)/i)?.[1];}
+    else if(/sqrt|square root/i.test(full)){fn='sqrt';val=full.match(/(?:sqrt|square root)\s*(?:of\s+)?([\d.]+)/i)?.[1];}
+    else if(/log/i.test(full)){fn='log';val=full.match(/log\s*(?:of\s+)?([\d.]+)/i)?.[1];}
+    else if(/^sin/i.test(full)){fn='sin';val=full.match(/sin\s*(?:of\s+)?([\d.]+)/i)?.[1];}
+    else if(/^cos/i.test(full)){fn='cos';val=full.match(/cos\s*(?:of\s+)?([\d.]+)/i)?.[1];}
+    else if(/^tan/i.test(full)){fn='tan';val=full.match(/tan\s*(?:of\s+)?([\d.]+)/i)?.[1];}
+    else if(/gcd/i.test(full)){fn='gcd';const n=full.match(/gcd\s*(?:of\s+)?([\d]+)\s*(?:and|,)\s*([\d]+)/i);val=n?[parseInt(n[1]),parseInt(n[2])]:null;}
+    else if(/lcm/i.test(full)){fn='lcm';const n=full.match(/lcm\s*(?:of\s+)?([\d]+)\s*(?:and|,)\s*([\d]+)/i);val=n?[parseInt(n[1]),parseInt(n[2])]:null;}
+    if(fn&&val!==undefined&&val!==null) return {tool:'math_advanced',args:{function:fn,value:Array.isArray(val)?val:parseFloat(val)}};
+  }
+
+  return null;
+}
+
+function parseCalcExpression(expr) {
+  expr = expr.replace(/\^/g,'**');
+  const ops = [
+    {pattern:/([\d.]+)\s*\*\*\s*([\d.]+)/gi,op:'power'},
+    {pattern:/([\d.]+)\s*[\*x]\s*([\d.]+)/gi,op:'multiply'},
+    {pattern:/([\d.]+)\s*\/\s*([\d.]+)/gi,op:'divide'},
+    {pattern:/([\d.]+)\s*\+\s*([\d.]+)/gi,op:'add'},
+    {pattern:/([\d.]+)\s*-\s*([\d.]+)/gi,op:'subtract'},
+    {pattern:/([\d.]+)\s*%\s*([\d.]+)/gi,op:'modulo'},
+  ];
+  for(const{pattern,op}of ops){pattern.lastIndex=0;const m=pattern.exec(expr);if(m)return{operation:op,a:parseFloat(m[1]),b:parseFloat(m[2])};}
+  return null;
+}
+
+function validateArguments(toolName, args) {
+  const tool = TOOLS.find(t=>t.name===toolName);
+  if(!tool) return {valid:false,message:`Unknown tool: ${toolName}`,errors:[]};
+  const errors = [];
+  for(const p of tool.params){
+    if(p.required&&(args[p.name]===undefined||args[p.name]===null||args[p.name]===''))
+      errors.push(`Missing required parameter: "${p.name}" (${p.type})`);
+    if(args[p.name]!==undefined&&args[p.name]!==null){
+      if(p.type==='number'&&typeof args[p.name]!=='number'){if(isNaN(Number(args[p.name])))errors.push(`"${p.name}" must be a number`);}
+      if(p.type==='array'&&!Array.isArray(args[p.name])) errors.push(`"${p.name}" must be an array`);
+    }
+  }
+  return errors.length?{valid:false,message:'Argument validation failed',errors}:{valid:true};
+}
+
+function executeTool(toolName, args) {
+  const start = performance.now();
+  try {
+    let data;
+    switch(toolName){
+      case 'calculator':data=execCalculator(args);break;
+      case 'unit_converter':data=execUnitConverter(args);break;
+      case 'get_weather':data=execWeather(args);break;
+      case 'string_utils':data=execStringUtils(args);break;
+      case 'get_datetime':data=execDatetime(args);break;
+      case 'random_generator':data=execRandomGenerator(args);break;
+      case 'json_parser':data=execJsonParser(args);break;
+      case 'math_advanced':data=execMathAdvanced(args);break;
+      default:throw{code:'TOOL_NOT_FOUND',message:`Tool "${toolName}" not found`};
+    }
+    return{success:true,data,time:Math.round(performance.now()-start)};
+  } catch(err) {
+    return{success:false,error:err.message||String(err),errorCode:err.code||'EXECUTION_ERROR',time:Math.round(performance.now()-start)};
+  }
+}
+
+function execCalculator({operation,a,b}) {
+  const ops={add:()=>a+b,subtract:()=>a-b,multiply:()=>a*b,divide:()=>{if(b===0)throw{code:'DIVISION_BY_ZERO',message:'Cannot divide by zero'};return a/b;},power:()=>Math.pow(a,b),modulo:()=>{if(b===0)throw{code:'MODULO_BY_ZERO',message:'Cannot modulo by zero'};return a%b;}};
+  if(!ops[operation])throw{code:'UNKNOWN_OPERATION',message:`Unknown operation: "${operation}"`};
+  const sym={add:'+',subtract:'-',multiply:'×',divide:'÷',power:'^',modulo:'%'};
+  const result=ops[operation]();
+  return{operation,operand_a:a,operand_b:b,result:Math.round(result*1e10)/1e10,result_string:`${a} ${sym[operation]} ${b} = ${Math.round(result*1e10)/1e10}`};
+}
+
+function execUnitConverter({value,from_unit,to_unit}) {
+  const C={'km->miles':0.621371,'miles->km':1.60934,'kg->lb':2.20462,'lb->kg':0.453592,'celsius->fahrenheit':v=>v*9/5+32,'fahrenheit->celsius':v=>(v-32)*5/9,'celsius->kelvin':v=>v+273.15,'kelvin->celsius':v=>v-273.15,'mph->kph':1.60934,'kph->mph':0.621371,'mb->gb':1/1024,'gb->mb':1024,'gb->tb':1/1024,'tb->gb':1024,'kb->mb':1/1024,'mb->kb':1024,'meters->feet':3.28084,'feet->meters':0.3048,'cm->inches':0.393701,'inches->cm':2.54,'mm->cm':0.1,'cm->mm':10,'yards->meters':0.9144,'meters->yards':1.09361,'hours->minutes':60,'minutes->hours':1/60,'minutes->seconds':60,'seconds->minutes':1/60,'days->hours':24,'hours->days':1/24,'liters->gallons':0.264172,'gallons->liters':3.78541};
+  const key=`${from_unit}->${to_unit}`;
+  if(!C[key])throw{code:'UNSUPPORTED_CONVERSION',message:`Unsupported: ${from_unit} -> ${to_unit}`};
+  const f=C[key];const r=typeof f==='function'?f(value):value*f;
+  return{value,from_unit,to_unit,result:Math.round(r*1e6)/1e6,formula:`${value} ${from_unit} = ${Math.round(r*1e6)/1e6} ${to_unit}`};
+}
+
+function execWeather({city,units}) {
+  const h=city.toLowerCase().split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const conds=['Sunny','Partly Cloudy','Cloudy','Light Rain','Clear','Overcast','Windy','Foggy'];
+  const m=units!=='imperial';const base=5+(h%30);
+  const temp=m?base:Math.round(base*9/5+32);
+  return{city:city.charAt(0).toUpperCase()+city.slice(1),units:units||'metric',temperature:temp,feels_like:temp-2+Math.round(Math.random()*4),humidity:30+(h%50),condition:conds[h%conds.length],wind_speed:m?(5+(h%25)):Math.round((5+(h%25))*0.621371),wind_unit:m?'km/h':'mph',summary:`${temp}°${m?'C':'F'}, ${conds[h%conds.length]}, Humidity: ${30+(h%50)}%`};
+}
+
+function execStringUtils({operation,input}) {
+  const ops={uppercase:()=>input.toUpperCase(),lowercase:()=>input.toLowerCase(),reverse:()=>input.split('').reverse().join(''),word_count:()=>input.trim().split(/\s+/).filter(Boolean).length,char_count:()=>input.length,slugify:()=>input.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''),base64_encode:()=>{try{return btoa(unescape(encodeURIComponent(input)))}catch(e){throw{code:'ENCODE_ERROR',message:'Failed to encode'}}},base64_decode:()=>{try{return decodeURIComponent(escape(atob(input.trim())))}catch(e){throw{code:'DECODE_ERROR',message:'Invalid base64'}}}};
+  if(!ops[operation])throw{code:'UNKNOWN_OPERATION',message:`Unknown: "${operation}"`};
+  const result=ops[operation]();
+  return{operation,input,result,result_type:typeof result==='number'?'number':'string'};
+}
+
+function execDatetime({timezone,format}) {
+  const now=new Date();const fmt=format||'full';let result;
+  try{
+    if(timezone) result=now.toLocaleString('en-US',{timeZone:timezone,...(fmt==='time'?{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}:fmt==='date'?{weekday:'long',year:'numeric',month:'long',day:'numeric'}:{})});
+    else switch(fmt){case'time':result=now.toTimeString().slice(0,8);break;case'date':result=now.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});break;case'iso':result=now.toISOString();break;case'unix':result=now.getTime();break;default:result=now.toLocaleString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});}
+  }catch(e){throw{code:'INVALID_TIMEZONE',message:`Invalid timezone: "${timezone}"`};}
+  return{format:fmt,timezone:timezone||'local',result,timestamp:now.toISOString()};
+}
+
+function execRandomGenerator({type,min,max,length,items}) {
+  switch(type){
+    case'number':{const lo=min??1,hi=max??100;if(lo>hi)throw{code:'INVALID_RANGE',message:`min(${lo}) > max(${hi})`};return{type,min:lo,max:hi,result:Math.floor(Math.random()*(hi-lo+1))+lo};}
+    case'password':{const len=Math.min(length||16,128);const c='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';let pw='';[c.slice(0,26),c.slice(26,52),c.slice(52,62),c.slice(62)].forEach(g=>pw+=g[Math.floor(Math.random()*g.length)]);for(let i=pw.length;i<len;i++)pw+=c[Math.floor(Math.random()*c.length)];pw=pw.split('').sort(()=>Math.random()-0.5).join('');return{type,length:len,password:pw,entropy_bits:Math.round(len*Math.log2(c.length))};}
+    case'uuid':{return{type,uuid:'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16)})};}
+    case'pick':{if(!items||!Array.isArray(items)||items.length<2)throw{code:'INVALID_ITEMS',message:'Need array of 2+ items'};return{type,items,picked:items[Math.floor(Math.random()*items.length)],total_items:items.length};}
+    default:throw{code:'UNKNOWN_TYPE',message:`Unknown: "${type}"`};
+  }
+}
+
+function execJsonParser({action,input}) {
+  try{
+    const p=JSON.parse(input);
+    switch(action){case'parse':return{action,valid:true,parsed:p,type:Array.isArray(p)?'array':typeof p};case'validate':return{action,valid:true,message:'JSON is valid',type:Array.isArray(p)?'array':typeof p};case'format':return{action,valid:true,formatted:JSON.stringify(p,null,2)};case'minify':return{action,valid:true,minified:JSON.stringify(p)};default:throw{code:'UNKNOWN_ACTION',message:`Unknown: "${action}"`};}
+  }catch(e){if(action==='validate')return{action,valid:false,message:'JSON is invalid',error:e.message};throw{code:'JSON_PARSE_ERROR',message:`Failed to parse: ${e.message}`};}
+}
+
+function execMathAdvanced({function:fn,value}) {
+  const fns={
+    factorial:n=>{if(n<0||!Number.isInteger(n))throw{code:'INVALID_INPUT',message:'Non-negative integer required'};if(n>170)throw{code:'OVERFLOW',message:'Max 170'};let r=1;for(let i=2;i<=n;i++)r*=i;return r;},
+    fibonacci:n=>{if(n<0||!Number.isInteger(n))throw{code:'INVALID_INPUT',message:'Non-negative integer required'};if(n>1000)throw{code:'OVERFLOW',message:'Max 1000'};if(n===0)return 0;let a=0,b=1;for(let i=2;i<=n;i++)[a,b]=[b,a+b];return b;},
+    sqrt:n=>{if(n<0)throw{code:'NEGATIVE_INPUT',message:'Negative input'};return Math.round(Math.sqrt(n)*1e10)/1e10;},
+    log:n=>{if(n<=0)throw{code:'INVALID_INPUT',message:'Positive number required'};return Math.round(Math.log(n)*1e10)/1e10;},
+    sin:n=>Math.round(Math.sin(n)*1e10)/1e10,
+    cos:n=>Math.round(Math.cos(n)*1e10)/1e10,
+    tan:n=>{if(Math.abs(Math.cos(n))<1e-10)throw{code:'UNDEFINED',message:'Tangent undefined here'};return Math.round(Math.tan(n)*1e10)/1e10;},
+    gcd:arr=>{if(!Array.isArray(arr)||arr.length!==2)throw{code:'INVALID_INPUT',message:'Need [a, b]'};const g=(x,y)=>y===0?x:g(y,x%y);return g(Math.abs(arr[0]),Math.abs(arr[1]));},
+    lcm:arr=>{if(!Array.isArray(arr)||arr.length!==2)throw{code:'INVALID_INPUT',message:'Need [a, b]'};const g=(x,y)=>y===0?x:g(y,x%y);return Math.abs(arr[0]*arr[1])/g(Math.abs(arr[0]),Math.abs(arr[1]));},
+    is_prime:n=>{if(!Number.isInteger(n)||n<2)return false;if(n<4)return true;if(n%2===0||n%3===0)return false;for(let i=5;i*i<=n;i+=6)if(n%i===0||n%(i+2)===0)return false;return true;}
+  };
+  if(!fns[fn])throw{code:'UNKNOWN_FUNCTION',message:`Unknown: "${fn}"`};
+  const result=fns[fn](value);
+  return{function:fn,input:value,result,result_type:typeof result==='boolean'?'boolean':'number'};
+}
+
+function formatReply(tool, args, data) {
+  switch(tool){
+    case 'calculator': return data.result_string;
+    case 'unit_converter': return data.formula;
+    case 'get_weather': return data.summary;
+    case 'string_utils': return `${data.operation}("${data.input}") → ${data.result}`;
+    case 'get_datetime': return data.result;
+    case 'random_generator':
+      if(data.type==='password') return `Generated password: \`${data.password}\` (${data.length} chars, ~${data.entropy_bits} bits)`;
+      if(data.type==='uuid') return `Generated UUID: ${data.uuid}`;
+      if(data.type==='pick') return `Picked: **${data.picked}** (from ${data.total_items} items)`;
+      return `Random number (${data.min}–${data.max}): ${data.result}`;
+    case 'json_parser': return data.valid?`JSON is valid (${data.type||'ok'}).${data.formatted?'\n'+data.formatted:''}${data.minified?' Minified: '+data.minified:''}`:`JSON is invalid: ${data.error||data.message}`;
+    case 'math_advanced': return `${data.function}(${Array.isArray(data.input)?data.input.join(', '):data.input}) = ${data.result}`;
+    default: return JSON.stringify(data,null,2);
+  }
+}
+
+function logJson(type, data) {
+  jsonLogEntries.push({type,data,time:new Date()});
+  document.getElementById('jsonEmpty').style.display='none';
+  document.getElementById('jsonCount').textContent=jsonLogEntries.length;
+  const el=document.getElementById('jsonLog');
+  const entry=document.createElement('div');entry.className='json-entry';
+  const timeStr=new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const icons={request:'fa-arrow-right',response:'fa-arrow-left',error:'fa-times-circle'};
+  entry.innerHTML=`<div class="json-entry-header"><div class="json-entry-label ${type}"><i class="fas ${icons[type]}"></i> Function ${type} <span class="badge">${data.function?.name||data.error?.code||type}</span></div><span class="json-entry-time">${timeStr}</span></div><div class="json-block ${type==='error'?'error-json':''}"><button class="json-copy-btn" onclick="copyJson(this)"><i class="fas fa-copy"></i> Copy</button>${highlightJson(JSON.stringify(data,null,2))}</div>`;
+  el.appendChild(entry);el.parentElement.scrollTop=el.parentElement.scrollHeight;
+}
+
+function highlightJson(str) {
+  return escapeHtml(str)
+    .replace(/"([^"]+)"(?=\s*:)/g,'<span class="jk">"$1"</span>')
+    .replace(/:\s*"([^"]*?)"/g,': <span class="js">"$1"</span>')
+    .replace(/:\s*(-?\d+\.?\d*)/g,': <span class="jn">$1</span>')
+    .replace(/:\s*(true|false)/g,': <span class="jb">$1</span>')
+    .replace(/:\s*(null)/g,': <span class="jnull">$1</span>')
+    .replace(/([{}[\]])/g,'<span class="jp">$1</span>');
+}
+
+function copyJson(btn) {
+  const text=btn.closest('.json-block').textContent.replace('Copy','').trim();
+  navigator.clipboard.writeText(text).then(()=>{btn.innerHTML='<i class="fas fa-check"></i> Copied';setTimeout(()=>btn.innerHTML='<i class="fas fa-copy"></i> Copy',1500);});
+}
+
+function logError(code, details, message) {
+  errorLogEntries.push({code,details,message,time:new Date()});
+  document.getElementById('errorsEmpty').style.display='none';
+  document.getElementById('errCount').textContent=errorLogEntries.length;
+  const el=document.getElementById('errorsLog');
+  const entry=document.createElement('div');entry.className='json-entry';
+  const timeStr=new Date().toLocaleTimeString('en-US',{hour12:false});
+  entry.innerHTML=`<div class="json-entry-header"><div class="json-entry-label error"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(code)} <span class="badge">ERROR</span></div><span class="json-entry-time">${timeStr}</span></div><div class="json-block error-json"><button class="json-copy-btn" onclick="copyJson(this)"><i class="fas fa-copy"></i> Copy</button>${highlightJson(JSON.stringify({code,message,details,timestamp:new Date().toISOString()},null,2))}</div>`;
+  el.appendChild(entry);
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.inspector-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-json').style.display=tab==='json'?'block':'none';
+  document.getElementById('tab-tools').style.display=tab==='tools'?'block':'none';
+  document.getElementById('tab-tools').classList.toggle('active',tab==='tools');
+  document.getElementById('tab-errors').style.display=tab==='errors'?'block':'none';
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+function generateId(){return Math.random().toString(36).slice(2,10);}
+function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function updateStats(){document.getElementById('statMsgs').textContent=stats.msgs;document.getElementById('statCalls').textContent=stats.calls;document.getElementById('statErrors').textContent=stats.errors;document.getElementById('statLatency').textContent=stats.lastLatency+'ms';}
+
+function showToast(msg, type) {
+  const toast=document.createElement('div');toast.className=`toast ${type}`;
+  const icon=type==='success'?'fa-check-circle':type==='error'?'fa-times-circle':'fa-info-circle';
+  toast.innerHTML=`<i class="fas ${icon}"></i> ${msg}`;
+  document.getElementById('toastContainer').appendChild(toast);
+  setTimeout(()=>toast.remove(),3000);
+}
+
+function clearChat() {
+  jsonLogEntries=[];errorLogEntries=[];stats={msgs:0,calls:0,errors:0,lastLatency:0};updateStats();
+  document.getElementById('jsonLog').innerHTML='';document.getElementById('errorsLog').innerHTML='';
+  document.getElementById('jsonEmpty').style.display='flex';document.getElementById('errorsEmpty').style.display='flex';
+  document.getElementById('jsonCount').textContent='0';document.getElementById('errCount').textContent='0';
+  showWelcome();document.getElementById('suggestions').style.display='flex';showToast('Chat cleared','info');
+}
+
+function exportLog() {
+  const data={exported_at:new Date().toISOString(),stats,json_log:jsonLogEntries,error_log:errorLogEntries};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');
+  a.href=url;a.download=`tool-agent-log-${Date.now()}.json`;a.click();URL.revokeObjectURL(url);
+  showToast('Log exported','success');
+}
+
+function toggleMobileInspector(){document.getElementById('inspectorPanel').classList.toggle('mobile-show');}
+
+init();
+</script>
+</body>
+</html>
